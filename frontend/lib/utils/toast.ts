@@ -93,7 +93,6 @@ export const promise = <T>(
     loading: messages.loading,
     success: messages.success,
     error: messages.error,
-  }, {
     ...defaultOptions,
     ...options,
   });
