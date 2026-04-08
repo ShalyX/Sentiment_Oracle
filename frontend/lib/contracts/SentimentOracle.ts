@@ -68,7 +68,6 @@ class SentimentOracle {
       
       // Handle plain object (common for dict returns)
       if (typeof results === 'object' && results !== null) {
-        // Sometimes it's { data: { ... } } or similar depending on the wrapper
         const data = results.data || results;
         return Object.entries(data).map(([text, sentiment]) => ({
           text: String(text),
@@ -80,7 +79,7 @@ class SentimentOracle {
       return [];
     } catch (error) {
       console.error("Error fetching all results:", error);
-      throw new Error("Failed to fetch results from contract");
+      return []; // Return empty instead of throwing to prevent UI crash
     }
   }
 
@@ -99,7 +98,8 @@ class SentimentOracle {
 
       return sentiment as string;
     } catch (error) {
-      console.error("Error fetching sentiment:", error);
+      // Logic for handling the BigInt error transition or RPC lag
+      console.warn(`Attempt to fetch sentiment for "${text}" resulted in error. This is normal during consensus.`, error);
       return "NOT_FOUND";
     }
   }
@@ -107,28 +107,48 @@ class SentimentOracle {
   /**
    * Submit text for AI sentiment analysis
    * @param text - The text to analyze
-   * @returns Transaction receipt
+   * @returns Transaction receipt with consensus data
    */
-  async analyzeText(text: string): Promise<TransactionReceipt> {
+  async analyzeText(text: string): Promise<TransactionReceipt & { consensusResult?: string }> {
     try {
-      const txHash = await this.client.writeContract({
+      const txHash = await (this.client as any).writeContract({
         address: this.contractAddress,
         functionName: "analyze_text",
         args: [text],
         value: BigInt(0),
+        gas: BigInt(10000000), 
       });
+
+      console.log("Transaction Hash:", txHash);
 
       const receipt = await this.client.waitForTransactionReceipt({
         hash: txHash,
         status: "ACCEPTED" as any,
-        retries: 30, // Increased retries for AI consensus
+        retries: 60, // Ample retries for AI consensus
         interval: 5000,
       });
 
-      return receipt as TransactionReceipt;
+      console.log("Transaction Receipt:", receipt);
+
+      // Extract result from consensus data if available immediately
+      let consensusResult: string | undefined;
+      if (receipt && receipt.consensus_data && receipt.consensus_data.leader_receipt) {
+         try {
+           const receiptStr = JSON.stringify(receipt.consensus_data.leader_receipt);
+           const found = ['POSITIVE', 'NEGATIVE', 'NEUTRAL'].find(s => receiptStr.includes(s));
+           if (found) {
+             consensusResult = found;
+             console.log("Extracted consensus result from receipt:", found);
+           }
+         } catch (e) {
+           console.warn("Failed to parse consensus result from receipt", e);
+         }
+      }
+
+      return { ...receipt, consensusResult } as any;
     } catch (error) {
-      console.error("Error analyzing text:", error);
-      throw new Error("Failed to submit text for analysis");
+      console.error("Error in analyzeText:", error);
+      throw error;
     }
   }
 }

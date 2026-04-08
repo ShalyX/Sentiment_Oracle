@@ -46,8 +46,8 @@ export function useSentimentResults() {
       return contract.getAllResults();
     },
     refetchOnWindowFocus: true,
-    refetchInterval: 3000, // Poll every 3s to reflect consensus updates
-    staleTime: 2000,
+    refetchInterval: 5000, // Poll every 5s to reflect consensus updates
+    staleTime: 3000,
     enabled: !!contract,
   });
 }
@@ -60,6 +60,7 @@ export function useAnalyzeText() {
   const { address } = useWallet();
   const queryClient = useQueryClient();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [extractedSentiment, setExtractedSentiment] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: async (text: string) => {
@@ -70,11 +71,17 @@ export function useAnalyzeText() {
         throw new Error("Wallet not connected. Please connect your wallet to analyze text.");
       }
       setIsAnalyzing(true);
-      return contract.analyzeText(text);
+      setExtractedSentiment(null); // Reset
+      
+      const receipt = await contract.analyzeText(text);
+      if (receipt.consensusResult) {
+        setExtractedSentiment(receipt.consensusResult);
+      }
+      return receipt;
     },
     onSuccess: async (_, text) => {
-      // Small delay to ensure the node has state updated before refetching
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Longer delay for GenLayer state finalization
+      await new Promise(resolve => setTimeout(resolve, 5000));
       
       // Invalidate both global and specific queries
       queryClient.invalidateQueries({ queryKey: ["sentimentResults"] });
@@ -88,6 +95,7 @@ export function useAnalyzeText() {
     onError: (err: any) => {
       console.error("Error analyzing text:", err);
       setIsAnalyzing(false);
+      setExtractedSentiment(null);
       error("Analysis failed", {
         description: err?.message || "Please try again."
       });
@@ -97,6 +105,7 @@ export function useAnalyzeText() {
   return {
     ...mutation,
     isAnalyzing,
+    extractedSentiment,
     analyzeText: mutation.mutate,
     analyzeTextAsync: mutation.mutateAsync,
   };
@@ -107,16 +116,42 @@ export function useAnalyzeText() {
  */
 export function useSingleSentiment(text: string | null) {
   const contract = useSentimentOracleContract();
+  const { data: allResults } = useSentimentResults();
 
   return useQuery<string, Error>({
     queryKey: ["singleSentiment", text],
-    queryFn: () => {
+    queryFn: async () => {
       if (!contract || !text) {
-        return Promise.resolve("NOT_FOUND");
+        return "NOT_FOUND";
       }
-      return contract.getSentiment(text);
+
+      // 1. Try direct contract call
+      const directResult = await contract.getSentiment(text);
+      if (directResult && directResult !== "NOT_FOUND") {
+        return directResult;
+      }
+
+      // 2. Fallback: Search the global results list for a normalized match
+      // This solves the key mismatch issue (e.g. whitespace/newlines) without redeploying
+      if (allResults && allResults.length > 0) {
+        const normalizedInput = text.trim().toLowerCase();
+        const match = allResults.find(r => 
+          r.text.trim().toLowerCase() === normalizedInput
+        );
+        
+        if (match) {
+          console.log("Found match in global results fallback:", match.sentiment);
+          return match.sentiment;
+        }
+      }
+
+      return "NOT_FOUND";
     },
     enabled: !!contract && !!text,
-    staleTime: 0, // Always fetch fresh to avoid caching NOT_FOUND
+    staleTime: 0,
+    refetchInterval: (query) => {
+      // Keep polling if not found or if the result is NOT_FOUND
+      return (query.state.data === "NOT_FOUND" || !query.state.data) ? 3000 : false;
+    }
   });
 }

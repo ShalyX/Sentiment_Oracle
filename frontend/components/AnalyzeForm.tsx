@@ -11,11 +11,15 @@ import { Badge } from "@/components/ui/badge";
 export function AnalyzeForm() {
   const [text, setText] = useState("");
   const [lastAnalyzedText, setLastAnalyzedText] = useState<string | null>(null);
-  const { analyzeText, isAnalyzing, isSuccess } = useAnalyzeText();
+  const { analyzeText, isAnalyzing, isSuccess, extractedSentiment } = useAnalyzeText();
   const { isConnected, connectWallet } = useWallet();
   
   // Fetch result for the specific text we just analyzed
-  const { data: sentiment, isLoading: isFetchingResult } = useSingleSentiment(lastAnalyzedText);
+  const { data: contractSentiment, isLoading: isFetchingResult } = useSingleSentiment(lastAnalyzedText);
+
+  // Determine the effective sentiment (extracted from receipt OR from contract)
+  const sentiment = extractedSentiment || contractSentiment;
+  const isPendingConsensus = isAnalyzing || (isFetchingResult && (!sentiment || sentiment === "NOT_FOUND"));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +53,7 @@ export function AnalyzeForm() {
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Enter text for AI-powered sentiment analysis... (e.g. 'GenLayer is revolutionizing smart contracts with AI.')"
+              placeholder="Enter text for AI-powered sentiment analysis..."
               className={cn(
                 "w-full min-h-[120px] p-4 rounded-xl transition-all duration-300",
                 "bg-white/5 border border-white/10 hover:border-accent/50 focus:border-accent focus:ring-4 focus:ring-accent/10 focus:outline-none",
@@ -99,7 +103,7 @@ export function AnalyzeForm() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
               <div className="flex-shrink-0 w-10 h-10 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center">
-                {isAnalyzing || (isFetchingResult && (!sentiment || sentiment === "NOT_FOUND")) ? (
+                {isPendingConsensus ? (
                   <Loader2 className="w-5 h-5 text-accent animate-spin" />
                 ) : (
                   <CheckCircle2 className="w-5 h-5 text-accent" />
@@ -117,7 +121,7 @@ export function AnalyzeForm() {
 
             <div className="flex-shrink-0 flex items-center gap-4">
               <div className="w-px h-8 bg-white/10 hidden sm:block" />
-              {isAnalyzing || (isFetchingResult && (!sentiment || sentiment === "NOT_FOUND")) ? (
+              {isPendingConsensus ? (
                 <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-lg border border-white/5 animate-pulse">
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Awaiting Consensus</span>
                 </div>

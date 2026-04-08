@@ -225,17 +225,26 @@ npm run dev
 Then open `http://localhost:3000` in your browser.
 
 ## Part 8: Deploying to Vercel
-Deploying to Vercel is highly recommended for Next.js projects.
+Deploying to Vercel is highly recommended for Next.js projects. Since our frontend is a standalone Next.js application, we should deploy it directly from the `frontend/` folder to ensure Vercel automatically detects the framework.
 
-1. Push your code to GitHub.
-2. Import the project into the [Vercel Dashboard](https://vercel.com/new).
-3. If Vercel asks for the **Root Directory**, you have two options:
-   - **Option A (Recommended)**: Set the **Root Directory** to `frontend`. This lets Vercel treat the `frontend` folder as a standard Next.js app.
-   - **Option B**: Leave the Root Directory as `./` and use the `vercel.json` we provided in the root to handle the multi-folder build.
-4. Set your environment variables (from `.env.example`) in the Vercel project settings:
-   - `NEXT_PUBLIC_CONTRACT_ADDRESS`: Your deployed contract address.
-   - `NEXT_PUBLIC_GENLAYER_RPC_URL`: `https://studio.genlayer.com/api`
-5. Click **Deploy**.
+### 1. Link Your Project
+Open your terminal, navigate to the `frontend/` directory, and link the project to Vercel:
+```shell
+cd frontend
+vercel link
+```
+Follow the prompts to link it to your existing project.
+
+### 2. Push and Deploy
+Every time you push to GitHub, Vercel will now automatically build and deploy your DApp. To trigger a manual production deploy from the CLI:
+```shell
+vercel --prod
+```
+
+### 3. Environment Variables
+Make sure to set your environment variables (from `.env.example`) in the Vercel project settings:
+- `NEXT_PUBLIC_CONTRACT_ADDRESS`: Your deployed contract address.
+- `NEXT_PUBLIC_GENLAYER_RPC_URL`: `https://studio.genlayer.com/api`
 
 ## How It All Works Together
 ```text

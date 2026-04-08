@@ -13,11 +13,17 @@ class SentimentOracle(gl.Contract):
         ⚠️ Non-deterministic: this calls an LLM.
         Each validator runs this independently.
         """
+        # Improved prompt for better consensus reliability
         prompt = f"""
-        Analyze the sentiment of this text: 
-        '{text}'
+        Analyze the sentiment of the following text objectively.
+        Text: '{text}'
         
-        Respond with exactly ONE of these words: POSITIVE, NEGATIVE, or NEUTRAL.
+        Respond only with one of these exact words:
+        - POSITIVE
+        - NEGATIVE
+        - NEUTRAL
+        
+        Do not include any other text, punctuation, or explanation.
         """
         return gl.nondet.exec_prompt(prompt)
 
@@ -27,20 +33,27 @@ class SentimentOracle(gl.Contract):
         Write method — costs GEN gas, modifies state.
         Validators reach consensus using the Equivalence Principle.
         """
+        # Normalize input text to avoid key mismatches
+        clean_text = text.strip()
+        
         # gl.eq_principle.strict_eq wraps the non-deterministic call.
-        # Validators must semantically agree before the result is stored.
+        # We strip() and upper() the result to ensure validators agree on the semantic label
+        # even if their chosen LLM has slight formatting variations.
         sentiment = gl.eq_principle.strict_eq(
-            lambda: self._perform_sentiment_analysis(text)
+            lambda: self._perform_sentiment_analysis(clean_text).strip().upper()
         )
-        self.results[text] = sentiment
+        
+        # Store normalized result
+        self.results[clean_text] = sentiment
 
     @gl.public.view
     def get_sentiment(self, text: str) -> str:
         """
         View method — free to call, reads from state only.
         """
-        if text in self.results:
-            return self.results[text]
+        clean_text = text.strip()
+        if clean_text in self.results:
+            return self.results[clean_text]
         return "NOT_FOUND"
 
     @gl.public.view
